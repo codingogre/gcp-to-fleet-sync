@@ -63,6 +63,8 @@ def create_integration_policy(gcp_project_id: str, agent_policy_id: str, integra
     r = s.post(url=url, headers=headers, json=integration_policy)
     return r.status_code
 
+# TODO Multi agent same agent policy
+# TODO Sync changes over time to master integration
 
 def delete_integration_policy(package_policy_id: str):
     url = f"{endpoint}/api/fleet/package_policies/{package_policy_id}"
@@ -113,7 +115,8 @@ def main():
         for gcp_input in policy['item']['inputs']:
             # Loop through all the data streams to grab GCP project_ids
             for stream in gcp_input['streams']:
-                agent_gcp_projects.append(stream['project_id'])
+                if 'project_id' in stream:
+                    agent_gcp_projects.append(stream['project_id'])
                 print(f"Found the following integration:\n"
                       f"  Name: {gcp_input['name']}\n"
                       f"  Package Policy ID: {gcp_input['package_policy_id']}\n"
