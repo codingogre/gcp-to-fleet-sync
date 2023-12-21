@@ -117,17 +117,17 @@ def main():
             for stream in gcp_input['streams']:
                 if 'project_id' in stream:
                     agent_gcp_projects.append(stream['project_id'])
-                print(f"Found the following integration:\n"
-                      f"  Name: {gcp_input['name']}\n"
-                      f"  Package Policy ID: {gcp_input['package_policy_id']}\n"
-                      f"  GCP Project: {stream['project_id']}\n"
-                      f"  Datatype: {stream['data_stream']['type']}\n"
-                      f"  Dataset: {stream['data_stream']['dataset']}\n")
-                # Create populate gcp_project -> package_policy_map so we can delete integration later if needed
-                if stream['project_id'] in gcp_project_to_package_policy_map:
-                    gcp_project_to_package_policy_map[stream['project_id']].append(gcp_input['package_policy_id'])
-                else:
-                    gcp_project_to_package_policy_map[stream['project_id']] = [gcp_input['package_policy_id']]
+                    print(f"Found the following integration:\n"
+                          f"  Name: {gcp_input['name']}\n"
+                          f"  Package Policy ID: {gcp_input['package_policy_id']}\n"
+                          f"  GCP Project: {stream['project_id']}\n"
+                          f"  Datatype: {stream['data_stream']['type']}\n"
+                          f"  Dataset: {stream['data_stream']['dataset']}\n")
+                    # Create populate gcp_project -> package_policy_map so we can delete integration later if needed
+                    if stream['project_id'] in gcp_project_to_package_policy_map:
+                        gcp_project_to_package_policy_map[stream['project_id']].append(gcp_input['package_policy_id'])
+                    else:
+                        gcp_project_to_package_policy_map[stream['project_id']] = [gcp_input['package_policy_id']]
 
     # Create a list of unique GCP project_ids
     agent_gcp_projects = list(dict.fromkeys(agent_gcp_projects))
