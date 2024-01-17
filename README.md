@@ -8,4 +8,4 @@ Features:
 
 Here is the a design diagram to help one understand the program and how it works:
 
-![GCP to Fleet Sync Design non transparent](https://github.com/codingogre/gcp-to-fleet-sync/assets/2017420/733c0b8b-54fd-43e0-9883-c1747feee995)
+![GCP to Fleet Sync Design](https://github.com/codingogre/gcp-to-fleet-sync/assets/2017420/8123148a-59bb-4ab2-b27c-74f49d9a0bb0)
