@@ -156,10 +156,10 @@ def get_list_diffs(primary_list: list, secondary_list: list):
 
 
 def is_key_in_list_dicts(target_list: list, key: str):
-    return any(key in d for d in target_list)
+    return next((d for i, d in enumerate(target_list) if key in d), None)
 
 
-def return_dict_if_in_list(target_list: list, key: str, value: str):
+def is_kv_in_list_dicts(target_list: list, key: str, value: str):
     return next((d for i, d in enumerate(target_list) if d[key] == value), None)
 
 
@@ -196,24 +196,26 @@ def main():
     for inp in policy['item']['inputs']:
         # Check to see if this integration is a GCP integration
         if 'gcp' == inp['meta']['package']['name']:
-            # I have never seen more than 1 stream, it doesn't appear to be settable in the UI
+            # I have never seen more than 1 stream for GCP, it doesn't appear to be settable in the UI
             stream = inp['streams'][0]
             stream_datatype = stream['data_stream']['type']
             stream_dataset = stream['data_stream']['dataset']
             # Check to see if the GCP project is already listed in the policy_hierarchy, if so return it
             # if not return None
-            integration = return_dict_if_in_list(target_list=policy_hierarchy['agent_policy']['integrations'],
-                                                 key='name',
-                                                 value=inp['name'])
+            integration = is_kv_in_list_dicts(target_list=policy_hierarchy['agent_policy']['integrations'],
+                                              key='name',
+                                              value=inp['name'])
             if integration is not None:  # GCP project not found in policy hierarchy
-                if stream_datatype not in integration['datatype']:  # datatype(logs, metrics, etc.) not there?
-                    integration['datatype'] = [stream_datatype]
-                integration['datatype'][stream_datatype]['dataset'].append(stream_dataset)
+                datatype = is_key_in_list_dicts(target_list=integration['datatype'], key=stream_datatype)
+                if datatype is None:
+                    integration['datatype'].append({stream_datatype: {'dataset': [stream_dataset]}})
+                else:
+                    datatype[stream_datatype]['dataset'].append(stream_dataset)
             else:
                 integration = {'name': inp['name'],
                                'id': inp['package_policy_id'],
                                'gcp_project': stream['project_id'],
-                               'datatype': {stream_datatype: {'dataset': [stream_dataset]}}}
+                               'datatype': [{stream_datatype: {'dataset': [stream_dataset]}}]}
                 policy_hierarchy['agent_policy']['integrations'].append(integration)
 
             # Add package_policy_id to dict in case we need to delete the integration later
