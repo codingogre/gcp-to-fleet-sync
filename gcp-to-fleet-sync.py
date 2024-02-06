@@ -32,8 +32,8 @@ cursor = connection.cursor()
 
 
 # Create a local SQLLite3 db to store the revision of the master policy.  During each run we will compare
-# the revision that is in the master policy to the one stored in the DB. If newer it replaces the integrations
-# with the one defined in the master policy
+# the revision that is in the master policy to the one stored in the DB. If newer it updates the integrations
+# for each GCP project with the one defined in the master policy
 def is_master_policy_updated(current_revision):
     cursor.execute('CREATE TABLE IF NOT EXISTS policy(revision INTEGER)')
     rows = cursor.execute('SELECT revision FROM policy').fetchall()
@@ -65,7 +65,7 @@ def get_fleet_agents_by_query(query: str):
 
 # Get detailed Elastic Agent Policy
 def get_full_agent_policy(policy_id: str):
-    url = f"{endpoint}/api/fleet/agent_policies/{policy_id}/full"
+    url = f"{endpoint}/api/fleet/agent_policies/{policy_id}"
     r = s.get(url=url, headers=headers)
     if r.status_code == 200:
         return r.json()
@@ -175,7 +175,7 @@ def main():
 
     # dict to build the policy hierarchy including what agents it is deployed to and what
     # integrations it contains.
-    policy_hierarchy = {'agent_policy': {'id': "", 'agents': [], 'integrations': []}}
+    policy_hierarchy = {'agent_policy': {'id': '', 'revision': '', 'agents': [], 'integrations': []}}
 
     # Get a list of agents that are listening to GCP telemetry
     agents = get_fleet_agents_by_query(query=f'tags:"{os.environ["GCP_AGENT_TAG"]}"')
@@ -190,6 +190,7 @@ def main():
 
     # Start to build the hierarchy of integrations for the agent policy, so they can be displayed/logged
     policy_hierarchy['agent_policy']['id'] = agent['policy_id']
+    policy_hierarchy['agent_policy']['revision'] = policy['item']['revision']
 
     agent_gcp_projects = {}
     # Loop through the policy and get all the integrations (inputs)
@@ -222,7 +223,7 @@ def main():
             if stream['project_id'] not in agent_gcp_projects.keys():
                 agent_gcp_projects[stream['project_id']] = inp['package_policy_id']
 
-    print(f"Found the following policy:\n"
+    print(f"Found the following agent policy:\n"
           f"{yaml.dump(policy_hierarchy, allow_unicode=True, default_flow_style=False, sort_keys=False, Dumper=NoAliasDumper)}\n")
 
     # Find GCP projects that don't have an Elastic Integration. Used * to convert to a list
