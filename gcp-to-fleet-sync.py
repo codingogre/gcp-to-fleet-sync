@@ -14,7 +14,6 @@ class NoAliasDumper(yaml.SafeDumper):
 
 # Load configuration
 load_dotenv(override=True)
-
 api_key = os.environ["ELASTIC_API_KEY"]
 endpoint = os.environ["KIBANA_ENDPOINT"]
 
@@ -46,6 +45,7 @@ def is_master_policy_updated(current_revision):
         return True
 
 
+# Retrieve an active list of GCP projects from the configured organization
 def get_active_gcp_projects(quota_project_id: str):
     resource_manager_client = resourcemanager_v3.ProjectsClient(
         client_options={
@@ -63,8 +63,8 @@ def get_fleet_agents_by_query(query: str):
         return r.json()
 
 
-# Get detailed Elastic Agent Policy
-def get_full_agent_policy(policy_id: str):
+# Get Elastic Agent Policy
+def get_agent_policy(policy_id: str):
     url = f"{endpoint}/api/fleet/agent_policies/{policy_id}"
     r = s.get(url=url, headers=headers)
     if r.status_code == 200:
@@ -137,9 +137,9 @@ def update_integration_policy(gcp_project_id: str, agent_policy_id: str, package
 
 def check_http_status_code(status_code: int, message: str):
     if status_code == 200:
-        print(f'{message} succeeded')
+        print(f'{message} succeeded\n')
     else:
-        print(f'{message} failed')
+        print(f'{message} failed\n')
 
 
 def get_master_policy_revision():
@@ -171,11 +171,10 @@ def main():
     active_gcp_projects = []
     for project in projects:
         active_gcp_projects.append(project.project_id)
-    print(f'\nGCP cloud *active* project IDs: {active_gcp_projects}\n')
 
     # dict to build the policy hierarchy including what agents it is deployed to and what
     # integrations it contains.
-    policy_hierarchy = {'agent_policy': {'id': '', 'revision': '', 'agents': [], 'integrations': []}}
+    policy_hierarchy = {'agent_policy': {'name': '', 'revision': '', 'agents': [], 'integrations': []}}
 
     # Get a list of agents that are listening to GCP telemetry
     agents = get_fleet_agents_by_query(query=f'tags:"{os.environ["GCP_AGENT_TAG"]}"')
@@ -186,42 +185,49 @@ def main():
                                                            'version': agent['agent']['version']})
     # Grab the first agent and get the policy
     agent = agents['list'][0]
-    policy = get_full_agent_policy(policy_id=agent['policy_id'])
+    agent_policy = agent['policy_id']
+    policy = get_agent_policy(policy_id=agent_policy)
 
     # Start to build the hierarchy of integrations for the agent policy, so they can be displayed/logged
-    policy_hierarchy['agent_policy']['id'] = agent['policy_id']
     policy_hierarchy['agent_policy']['revision'] = policy['item']['revision']
+    policy_hierarchy['agent_policy']['name'] = policy['item']['name']
 
     agent_gcp_projects = {}
     # Loop through the policy and get all the integrations (inputs)
-    for inp in policy['item']['inputs']:
+    for pp in policy['item']['package_policies']:
         # Check to see if this integration is a GCP integration
-        if 'gcp' == inp['meta']['package']['name']:
-            # I have never seen more than 1 stream for GCP, it doesn't appear to be settable in the UI
-            stream = inp['streams'][0]
-            stream_datatype = stream['data_stream']['type']
-            stream_dataset = stream['data_stream']['dataset']
-            # Check to see if the GCP project is already listed in the policy_hierarchy, if so return it
-            # if not return None
-            integration = is_kv_in_list_dicts(target_list=policy_hierarchy['agent_policy']['integrations'],
-                                              key='name',
-                                              value=inp['name'])
-            if integration is not None:  # GCP project not found in policy hierarchy
-                datatype = is_key_in_list_dicts(target_list=integration['datatype'], key=stream_datatype)
-                if datatype is None:
-                    integration['datatype'].append({stream_datatype: {'dataset': [stream_dataset]}})
-                else:
-                    datatype[stream_datatype]['dataset'].append(stream_dataset)
-            else:
-                integration = {'name': inp['name'],
-                               'id': inp['package_policy_id'],
-                               'gcp_project': stream['project_id'],
-                               'datatype': [{stream_datatype: {'dataset': [stream_dataset]}}]}
-                policy_hierarchy['agent_policy']['integrations'].append(integration)
+        if 'gcp' == pp['package']['name']:
+            integration_name = pp['name']
+            gcp_project_name = pp['vars']['project_id']['value']
+            package_policy_id = pp['id']
+            for inp in pp['inputs']:
+                if inp['enabled']:
+                    # I have never seen more than 1 stream for GCP, it doesn't appear to be settable in the UI
+                    stream = inp['streams'][0]
+                    stream_datatype = stream['data_stream']['type']
+                    stream_dataset = stream['data_stream']['dataset']
+                    # Check to see if the GCP project is already listed in the policy_hierarchy, if so return it
+                    # if not return None
+                    integration = is_kv_in_list_dicts(target_list=policy_hierarchy['agent_policy']['integrations'],
+                                                      key='name',
+                                                      value=integration_name)
+                    if integration is not None:  # GCP project not found in policy hierarchy
+                        datatype = is_key_in_list_dicts(target_list=integration['datatype'], key=stream_datatype)
+                        if datatype is None:
+                            integration['datatype'].append({stream_datatype: {'dataset': [stream_dataset]}})
+                        else:
+                            datatype[stream_datatype]['dataset'].append(stream_dataset)
+                    else:
+                        integration = {'name': integration_name,
+                                       'id': package_policy_id,
+                                       'gcp_project': gcp_project_name,
+                                       'datatype': [{stream_datatype: {'dataset': [stream_dataset]}}]}
+                        policy_hierarchy['agent_policy']['integrations'].append(integration)
 
-            # Add package_policy_id to dict in case we need to delete the integration later
-            if stream['project_id'] not in agent_gcp_projects.keys():
-                agent_gcp_projects[stream['project_id']] = inp['package_policy_id']
+                    # Add package_policy_id to dict in case we need to delete the integration later
+                    if gcp_project_name not in agent_gcp_projects.keys():
+                        agent_gcp_projects[gcp_project_name] = package_policy_id
+    print(f'Agent GCP Projects: {agent_gcp_projects}')
 
     print(f"Found the following agent policy:\n"
           f"{yaml.dump(policy_hierarchy, allow_unicode=True, default_flow_style=False, sort_keys=False, Dumper=NoAliasDumper)}\n")
@@ -234,7 +240,7 @@ def main():
     # agent policy listening to GCP telemetry
     for project in new_gcp_projects:
         print(f"Creating integrations for GCP Project: {project}\n")
-        deploy_integration(agent_policy_id=agent['policy_id'], gcp_project_id=project)
+        deploy_integration(agent_policy_id=agent_policy, gcp_project_id=project)
 
     # Find projects configured in fleet that point to GCP projects that don't exist anymore
     deleted_gcp_projects = get_list_diffs(primary_list=[*agent_gcp_projects],
@@ -256,7 +262,7 @@ def main():
         print(f'Master integration policy updated, syncing the following GCP projects:\n{remaining_gcp_projects}\n')
         for project in remaining_gcp_projects:
             update_integration_policy(gcp_project_id=project,
-                                      agent_policy_id=agent['policy_id'],
+                                      agent_policy_id=agent_policy,
                                       package_policy_id=agent_gcp_projects[project])
 
         cursor.execute('UPDATE policy SET revision = ?', (master_policy_revision,))
