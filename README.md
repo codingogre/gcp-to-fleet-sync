@@ -6,6 +6,7 @@ Features:
 * If GCP projects are added integration polcies are automatically created for the new project
 * A master integration policy is defined in Kibana and used as the template for integrations
 * If there are changes to the master integration policy those changes are propagated to all of the other integrations
+* The ability to skip GCP project IDs to allow for custom integration configurations
 
 Here is the a design diagram to help one understand the program and how it works:
 
