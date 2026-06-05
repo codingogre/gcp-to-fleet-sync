@@ -17,4 +17,4 @@ python-dotenv==1.0.0
 PyYAML==6.0.1
 requests==2.33.0
 rsa==4.9
-urllib3==2.2.2
+urllib3==2.7.0
